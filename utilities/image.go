@@ -24,6 +24,10 @@ func NewHandler(storage storage.Storage) {
 	Image = &Handler{storage: storage}
 }
 
+func (h *Handler) AppendUrl(imagePath string) string {
+	return h.storage.AppendUrl(imagePath)
+}
+
 func (h *Handler) UploadImage(c *fiber.Ctx, fieldName string, folderName string, oldImageName string) (*string, string, error) {
 	// Open the file
 	file, _ := c.FormFile(fieldName)

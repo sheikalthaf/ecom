@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"ecom.com/app/aws"
 	"ecom.com/app/local"
 	"ecom.com/app/storage"
@@ -14,14 +16,21 @@ import (
 )
 
 func main() {
+	// load the env variables
 	config.LoadEnv()
-	app := fiber.New(fiber.Config{
-		Network: fiber.NetworkTCP6,
-	})
+
+	// create a new fiber app
+	app := fiber.New()
+
+	// create a new fiber app with tcp6 network
+	// app := fiber.New(fiber.Config{
+	// 	Network: fiber.NetworkTCP6,
+	// })
 
 	// Default middleware config
 	app.Use(compress.New())
 
+	// cors middleware
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
@@ -31,7 +40,7 @@ func main() {
 
 	// secret manager
 	database.HandleCredentials(accountType)
-
+	aws.InitS3Config()
 	var storage storage.Storage
 
 	switch accountType {
@@ -46,7 +55,11 @@ func main() {
 	default:
 		storage = local.NewLocalImageStorage()
 	}
+
+	// initialize the storage handler
 	utilities.NewHandler(storage)
+
+	// connect to the database
 	database.Connect()
 
 	// utilities.ImageInit()
@@ -105,5 +118,6 @@ func main() {
 	if port == "" {
 		port = "5000" // fallback port
 	}
+	fmt.Println("port", port)
 	app.Listen(":" + port)
 }

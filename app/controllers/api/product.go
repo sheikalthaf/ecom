@@ -137,6 +137,12 @@ func mapToProductViewModel(product []models.Product, tags []models.Tag) []Produc
 		for _, t := range p.Tags {
 			tagNames = append(tagNames, tagsMap[uuid.MustParse(t)])
 		}
+		thumbnail := []string{}
+		image := []string{}
+		for _, t := range p.Image {
+			image = append(image, utilities.Image.AppendUrl(t))
+			thumbnail = append(thumbnail, utilities.Image.AppendUrl(t))
+		}
 		productViewModel = append(productViewModel, ProductViewModel{
 			ID:           p.ID,
 			Name:         p.Name,
@@ -148,7 +154,8 @@ func mapToProductViewModel(product []models.Product, tags []models.Tag) []Produc
 			Size:         p.Size,
 			Quantity:     p.Quantity,
 			IsDeleted:    p.IsDeleted,
-			Image:        p.Image,
+			Image:        image,
+			Thumbnail:    thumbnail,
 			Tags:         p.Tags,
 			TagNames:     tagNames,
 		})
@@ -169,6 +176,7 @@ type ProductViewModel struct {
 	Quantity     int       `json:"Quantity"`
 	IsDeleted    bool      `json:"IsDeleted"`
 	Image        []string  `json:"Image"`
+	Thumbnail    []string  `json:"Thumbnail"`
 	Tags         []string  `json:"Tags"`
 	TagNames     []string  `json:"TagNames"`
 }

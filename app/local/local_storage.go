@@ -12,6 +12,10 @@ func NewLocalImageStorage() *LocalImageStorage {
 	return &LocalImageStorage{}
 }
 
+func (l *LocalImageStorage) AppendUrl(imagePath string) string {
+	return imagePath
+}
+
 func (l *LocalImageStorage) SaveImage(c multipart.File, imageName string) error {
 	// Implement local file system upload logic
 	dst, err := os.Create(imageName)
