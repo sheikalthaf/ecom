@@ -1,6 +1,10 @@
 package main
 
 import (
+	"ecom.com/app/aws"
+	"ecom.com/app/local"
+	"ecom.com/app/storage"
+	"ecom.com/config"
 	"ecom.com/database"
 	"ecom.com/router"
 	"ecom.com/utilities"
@@ -10,7 +14,7 @@ import (
 )
 
 func main() {
-	database.Connect()
+	config.LoadEnv()
 	app := fiber.New(fiber.Config{
 		Network: fiber.NetworkTCP6,
 	})
@@ -23,11 +27,33 @@ func main() {
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 
-	// utilities.ImageInit()
-	err := utilities.InitS3("ssr-bkt")
-	if err != nil {
-		// log.Fatalf("Failed to initialize S3: %v", err)
+	accountType := "aws"
+
+	// secret manager
+	database.HandleCredentials(accountType)
+
+	var storage storage.Storage
+
+	switch accountType {
+	case "aws":
+
+		// Initialize the storage handler
+		config, err := aws.LoadConfig()
+		if err != nil {
+			// log.Fatalf("Failed to load AWS config: %v", err)
+		}
+		storage = aws.NewS3Storage(config)
+	default:
+		storage = local.NewLocalImageStorage()
 	}
+	utilities.NewHandler(storage)
+	database.Connect()
+
+	// utilities.ImageInit()
+	// err := utilities.InitS3("ssr-bkt")
+	// if err != nil {
+	// 	// log.Fatalf("Failed to initialize S3: %v", err)
+	// }
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Hello, World!")
@@ -75,5 +101,9 @@ func main() {
 		return c.SendStatus(404) // => 404 "Not Found"
 	})
 
-	app.Listen(":8101")
+	port := config.Config("PORT")
+	if port == "" {
+		port = "5000" // fallback port
+	}
+	app.Listen(":" + port)
 }

@@ -28,6 +28,23 @@ func GetProducts(c *fiber.Ctx) error {
 	return c.JSON(mapToProductViewModel(products, tags))
 }
 
+// get products by category id
+func GetProductsByCategoryID(c *fiber.Ctx) error {
+	db := database.DB.GetDB(c)
+	var products = []models.Product{}
+	categoryID := uuid.MustParse(c.Params("id"))
+	db.Model(&models.Product{}).Where("CategoryID = ?", categoryID).Find(&products)
+
+	tagIds := []uuid.UUID{}
+	for _, p := range products {
+		for _, t := range p.Tags {
+			tagIds = append(tagIds, uuid.MustParse(t))
+		}
+	}
+	tags := GetTagByIds(c, tagIds)
+	return c.JSON(mapToProductViewModel(products, tags))
+}
+
 // GetProduct function
 func GetProduct(c *fiber.Ctx) error {
 	db := database.DB.GetDB(c)
@@ -48,7 +65,7 @@ func CreateProduct(c *fiber.Ctx) error {
 	oldImages := []string{}
 
 	for i, p := range product.Image {
-		oldImage, newImage, err := utilities.UploadImage(c, "Image"+strconv.Itoa(i), imageFolder, p)
+		oldImage, newImage, err := utilities.Image.UploadImage(c, "Image"+strconv.Itoa(i), imageFolder, p)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Something's wrong with your input", "data": err})
 		}
@@ -59,7 +76,7 @@ func CreateProduct(c *fiber.Ctx) error {
 	err := db.Create(&product).Error
 	// delete the old images
 	for _, oldImage := range oldImages {
-		utilities.DeleteImage(oldImage, &oldImage, imageFolder, err != nil)
+		utilities.Image.DeleteImage(oldImage, &oldImage, imageFolder, err != nil)
 	}
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Could not create product", "data": err})
@@ -81,7 +98,7 @@ func UpdateProduct(c *fiber.Ctx) error {
 		oldImage := oldProduct.Image[0]
 		oldProduct.Image = product.Image
 		// delete the old images
-		utilities.DeleteImage(product.Image[0], &oldImage, imageFolder, false)
+		utilities.Image.DeleteImage(product.Image[0], &oldImage, imageFolder, false)
 	}
 	if err := db.Save(&product).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"status": "error", "message": "Could not update user", "data": err})
@@ -100,7 +117,7 @@ func DeleteProduct(c *fiber.Ctx) error {
 	}
 	// delete the old images
 	for _, oldImage := range product.Image {
-		utilities.DeleteImage(oldImage, &oldImage, imageFolder, false)
+		utilities.Image.DeleteImage(oldImage, &oldImage, imageFolder, false)
 	}
 	return c.JSON(fiber.Map{"status": "success", "message": "User successfully deleted"})
 }

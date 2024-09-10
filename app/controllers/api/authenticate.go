@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"ecom.com/app/models"
+	"ecom.com/database"
 	"ecom.com/utilities"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
@@ -22,10 +23,12 @@ func AuthenticateUser(c *fiber.Ctx) error {
 	}
 
 	// check whether the user is valid or not
-	user, error := getUser(login.UserName, login.Password)
+	db := database.DB.GetDB(c)
+	user := new(models.User)
+	// username can be email or mobile number
+	db.Where(`"MobileNo" = ? AND "Password" = ?`, login.UserName, login.Password).First(&user)
 
-	// Throws Unauthorized error
-	if error {
+	if user.ID == uuid.Nil {
 		return c.SendStatus(fiber.StatusUnauthorized)
 	}
 
@@ -37,19 +40,7 @@ func AuthenticateUser(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"token": LoginResponse{AccessToken: *t}})
 }
 
-func getUser(userName string, password string) (*models.UserDetails, bool) {
-	if userName == "john" && password == "doe" {
-		details := models.UserDetails{
-			ID:   uuid.New(),
-			Name: "John Doe",
-		}
-		return &details, false
-	} else {
-		return nil, true
-	}
-}
-
-func generateAccessToken(user models.UserDetails) (*string, error) {
+func generateAccessToken(user models.User) (*string, error) {
 	// var year = "2022"
 	userDetails := new(UserTokenDetails)
 	userDetails.UserId = user.ID
@@ -106,8 +97,7 @@ type Login struct {
 }
 
 type UserTokenDetails struct {
-	UserId    uuid.UUID
-	RoleId    uuid.UUID
-	UserRefId uuid.UUID
-	Name      string
+	UserId uuid.UUID
+	RoleId string
+	Name   string
 }

@@ -17,6 +17,16 @@ func PublicRoutes(app *fiber.App) {
 	app.Get("/categories", api.GetCategories)
 	app.Get("/categories/:id", api.GetCategory)
 	app.Get("/categories/products/:id", api.GetCategoryProducts)
+
+	// get tags
+	app.Get("/tags", api.GetTags)
+	app.Get("/tags/:id", api.GetTag)
+
+	// authenticate
+	app.Post("/authenticate", api.AuthenticateUser)
+
+	// user
+	app.Post("/register", api.Register)
 }
 
 func PrivateRoutes(app *fiber.App) {
@@ -36,4 +46,15 @@ func PrivateRoutes(app *fiber.App) {
 	app.Post("/tags", api.CreateTag)
 	app.Put("/tags/:id", api.UpdateTag)
 	app.Delete("/tags/:id", api.DeleteTag)
+
+	// carts
+	app.Get("/carts/:id", api.GetCartByUserID)
+	app.Post("/carts", api.AddProductToCart)
+	app.Put("/carts/:id", api.UpdateProductInCart)
+	app.Delete("/carts/:id", api.DeleteProductFromCart)
+
+	// users
+	app.Get("/users", api.GetAllUsers)
+	app.Get("/users/:id", api.GetUser)
+	app.Put("/users/:id", api.UpdateUser)
 }

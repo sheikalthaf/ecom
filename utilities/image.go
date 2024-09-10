@@ -2,81 +2,66 @@ package utilities
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"mime/multipart"
 	"path/filepath"
 	"strings"
 
+	"ecom.com/app/storage"
 	"github.com/disintegration/imaging"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
-var s3Handler *S3Handler
-
-func InitS3(bucket string) error {
-	var err error
-	s3Handler, err = NewS3Handler(bucket)
-	return err
+type Handler struct {
+	storage storage.Storage
 }
 
-func UploadImage(c *fiber.Ctx, fieldName string, folderName string, oldImageName string) (*string, string, error) {
-	imgOutput, err := processAndSaveImage(c, fieldName, folderName, nil)
-	if err != nil {
-		return nil, "", err
-	}
+// store the handler
+var Image *Handler
 
-	var oldImage *string
-	newImage := oldImageName
-	if imgOutput != nil {
-		oldImage = &oldImageName
-		newImage = imgOutput.CompressedImage
-		*oldImage = ProperPathName(*oldImage)
-	}
-	return oldImage, ProperPathName(newImage), nil
+func NewHandler(storage storage.Storage) {
+	Image = &Handler{storage: storage}
 }
 
-func processAndSaveImage(c *fiber.Ctx, inputFileName string, outputFolderName string, outputFileName *string) (*ImageOutputViewModel, error) {
-	file, err := c.FormFile(inputFileName)
-	if err != nil {
-		return nil, err
-	}
+func (h *Handler) UploadImage(c *fiber.Ctx, fieldName string, folderName string, oldImageName string) (*string, string, error) {
+	// Open the file
+	file, _ := c.FormFile(fieldName)
+	// Check the file exist or not
 	if file == nil {
-		return nil, nil
+		return nil, "", nil
 	}
 	if file.Size > 2000000 { // 2MB
-		return nil, errors.New("file size is too large")
+		return nil, "", errors.New("file size is too large")
 	}
 
 	src, err := file.Open()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+
 	defer src.Close()
 
-	if outputFileName == nil {
-		id := uuid.New().String()
-		outputFileName = &id
-	}
-
-	replacer := strings.NewReplacer("\\", "/")
+	// if outputFileName == nil {
+	outputFileName := uuid.New().String()
+	// outputFileName = &id
+	// }
 
 	output := &ImageOutputViewModel{
-		CompressedImage: replacer.Replace(filepath.Join(outputFolderName, *outputFileName+".jpeg")),
-		ThumbnailImage:  replacer.Replace(filepath.Join(outputFolderName, "thumbnails", *outputFileName+".jpeg")),
+		CompressedImage: filepath.Join("images", folderName, outputFileName+".jpeg"),
+		ThumbnailImage:  filepath.Join("images", folderName, "thumbnails", outputFileName+".jpeg"),
 	}
 
-	// Compress the image
+	// Compress the image and save it to the "compressed" folder
 	compressedImg, err := compressImage(src, 800)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	// Upload compressed image to S3
-	err = s3Handler.UploadFile(context.Background(), output.CompressedImage, compressedImg)
+	// Save the compressed image
+	err = h.storage.SaveImage(compressedImg, output.CompressedImage)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Reset the file reader position
@@ -85,16 +70,28 @@ func processAndSaveImage(c *fiber.Ctx, inputFileName string, outputFolderName st
 	// Create a thumbnail
 	thumbnailImg, err := createThumbnail(src, 150)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+	// return output, nil
+	// imgOutput, err := processAndSaveImage(c, fieldName, folderName, nil)
+	// if err != nil {
+	// 	return nil, "", err
+	// }
 
 	// Upload thumbnail to S3
-	err = s3Handler.UploadFile(context.Background(), output.ThumbnailImage, thumbnailImg)
+	err = h.storage.SaveImage(thumbnailImg, output.ThumbnailImage)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return output, nil
+	var oldImage *string
+	newImage := oldImageName
+	// if output != nil {
+	oldImage = &oldImageName
+	newImage = output.CompressedImage
+	*oldImage = ProperPathName(*oldImage)
+	// }
+	return oldImage, ProperPathName(newImage), nil
 }
 
 func compressImage(img multipart.File, newWidth int) (multipart.File, error) {
@@ -139,12 +136,52 @@ func createThumbnail(img multipart.File, thumbnailSize int) (multipart.File, err
 	return &multipartFile{bytes.NewReader(buf.Bytes())}, nil
 }
 
-func DeleteImage(newImage string, oldImage *string, folder string, isError bool) {
+func (h *Handler) DeleteImage(newImage string, oldImage *string, folder string, isError bool) error {
+	// delete the new images created
+	var imgPath string
+	var thumbnailPath string
 	if oldImage != nil && isError {
-		s3Handler.DeleteFile(context.Background(), newImage)
+		imgPath, thumbnailPath = deleteOldImages(newImage, folder)
 	} else if oldImage != nil && !isError {
-		s3Handler.DeleteFile(context.Background(), *oldImage)
+		// delete the old images
+		imgPath, thumbnailPath = deleteOldImages(*oldImage, folder)
 	}
+
+	return h.storage.DeleteImage(imgPath, thumbnailPath)
+}
+
+func deleteOldImages(imgPath string, folderName string) (string, string) {
+	// Check if the image path is empty or not ends with the default image
+	if imgPath == "" || !isImageFileName(imgPath) {
+		return "", ""
+	}
+	// replace folderName with folderName + thumbnails
+	thumbnailPath := strings.Replace(imgPath, folderName, folderName+"/thumbnails", 1)
+	// os.Remove(imgPath)
+	// os.Remove(thumbnailPath)
+	return imgPath, thumbnailPath
+}
+
+func isImageFileName(fileName string) bool {
+	// List of valid image file extensions
+	imageExts := []string{".jpg", ".jpeg", ".png", ".gif", ".bmp"}
+
+	// Get the file extension
+	ext := strings.ToLower(filepath.Ext(fileName))
+
+	// Check if the file extension is in the list of valid image file extensions
+	for _, imageExt := range imageExts {
+		if ext == imageExt {
+			return true
+		}
+	}
+
+	return false
+}
+
+type ImageOutputViewModel struct {
+	CompressedImage string
+	ThumbnailImage  string
 }
 
 // multipartFile is a helper struct to convert a bytes.Reader to a multipart.File
@@ -154,9 +191,4 @@ type multipartFile struct {
 
 func (m *multipartFile) Close() error {
 	return nil
-}
-
-type ImageOutputViewModel struct {
-	CompressedImage string
-	ThumbnailImage  string
 }
